@@ -15,6 +15,7 @@ let buchungenSheet: GoogleAppsScript.Spreadsheet.Sheet;
 
 // Indices are 1-based!!
 let mailIndex: number; // E-Mail-Adresse
+let mitgliederNrIndex: number;
 let herrFrauIndex: number; // Anrede
 let herrFrau1Index: number; // Anrede 1
 let nameIndex: number; // Name
@@ -35,8 +36,8 @@ interface Event {
   [others: string]: any;
 }
 
-function isEmpty(str: string | undefined) {
-  return !str || 0 === str.length;
+function isEmpty(str: string | undefined | null) {
+  return !str || 0 === str.length; // I think !str is sufficient...
 }
 
 function test() {
@@ -52,17 +53,25 @@ function test() {
       "E-Mail-Adresse": ["michael.uhlenberg@t-online.de"],
       "Gleiche Adresse wie Teilnehmer 1 ?": ["ja"],
       "IBAN-Kontonummer": ["DE91100000000123456789"],
+      [einzelnFrage]: ["Zu zweit (DZ)"],
+      [tourFrage]: [
+        // "Fahrradtour um den Gardasee vom 1.5. bis 12.5.",
+        // "Transalp von Salzburg nach Venedig vom 2.5. bis 13.5.",
+        "Das malerische Havelland entdecken vom 5.5. bis 16.5.",
+        // Durch die ungarische Steppe vom 4.5. bis 15.5.",
+        //"Entlang der Drau vom 3.5. bis 14.5",
+      ],
     },
     range: buchungenSheet.getRange(2, 1, 1, buchungenSheet.getLastColumn()),
   };
-  e.namedValues[einzelnFrage] = ["Zu zweit (DZ)"];
-  e.namedValues[tourFrage] = [
-    // "Fahrradtour um den Gardasee vom 1.5. bis 12.5.",
-    // "Transalp von Salzburg nach Venedig vom 2.5. bis 13.5.",
-    "Das malerische Havelland entdecken vom 5.5. bis 16.5.",
-    // Durch die ungarische Steppe vom 4.5. bis 15.5.",
-    //"Entlang der Drau vom 3.5. bis 14.5",
-  ];
+  // e.namedValues[einzelnFrage] = ["Zu zweit (DZ)"];
+  // e.namedValues[tourFrage] = [
+  //   "Fahrradtour um den Gardasee vom 1.5. bis 12.5.",
+  //   "Transalp von Salzburg nach Venedig vom 2.5. bis 13.5.",
+  //   "Das malerische Havelland entdecken vom 5.5. bis 16.5.",
+  //   "Durch die ungarische Steppe vom 4.5. bis 15.5.",
+  //   "Entlang der Drau vom 3.5. bis 14.5",
+  // ];
   dispatch(e);
 }
 
@@ -91,6 +100,7 @@ function init() {
     if (sheet.getName() == "Buchungen") {
       buchungenSheet = sheet;
       mailIndex = sheetHeaders["E-Mail-Adresse"];
+      mitgliederNrIndex = sheetHeaders["ADFC-Mitgliedsnummer"];
       herrFrauIndex = sheetHeaders["Anrede"];
       herrFrau1Index = sheetHeaders["Anrede 1"];
       nameIndex = sheetHeaders["Name"];
@@ -219,8 +229,14 @@ function anmeldebestätigung() {
     );
     return;
   }
-  if (isEmpty(rowValues[verifikationsIndex])) {
+  if (isEmpty(rowValues[verifikationsIndex - 1])) {
     SpreadsheetApp.getUi().alert("Email-Adresse nicht verifiziert");
+    return;
+  }
+  let mitgliedsNummer = rowValues[mitgliederNrIndex - 1];
+  if (isEmpty(mitgliedsNummer) || isNaN(+mitgliedsNummer)) {
+    SpreadsheetApp.getUi().alert("Falsche Mitgliedsnummer");
+    // TODO: verify Nummer against MitgliederDB?
     return;
   }
   if (!isEmpty(rowValues[anmeldebestIndex - 1])) {
@@ -328,12 +344,13 @@ function verifyEmail() {
       !isEmpty(brow[mailIndex - 1]) &&
       isEmpty(brow[verifikationsIndex - 1])
     ) {
-      let baddr = brow[1];
+      let baddr = (brow[1] as string).toLowerCase();
       for (let ex in evalues) {
         let erow = evalues[ex];
-        if (erow[1] != "Ja" || isEmpty(erow[2])) continue;
-        let eaddr = erow[2];
+        if (erow.length < 3) continue;
+        let eaddr = (erow[2] as string).toLowerCase();
         if (eaddr != baddr) continue;
+        if (erow[1] != "Ja" || isEmpty(erow[2])) continue;
         // Buchungen[Verifiziert] = Email-Verif[Zeitstempel]
         buchungenSheet.getRange(bxi + 2, verifikationsIndex).setValue(erow[0]);
         brow[verifikationsIndex - 1] = erow[0];
@@ -373,7 +390,7 @@ function checkBuchung(e: Event) {
   // und können garnicht anders als gesetzt sein. Sonst hier prüfen analog zu IBAN.
 
   let einzeln = e.namedValues[einzelnFrage][0].startsWith("Alleine");
-  let personen = einzeln ? "einer Person" : "zwei Personen";
+  let personen = einzeln ? "eine Person" : "zwei Personen";
   let restCol = einzeln
     ? headers["Reisen"]["EZ-Rest"]
     : headers["Reisen"]["DZ-Rest"];
