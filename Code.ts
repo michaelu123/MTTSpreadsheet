@@ -841,3 +841,4 @@ function isValidIban(iban: string) {
   for (; s; s = s.substr(13)) m = +("" + m + s.substr(0, 13)) % 97;
   return m == 1;
 }
+// test

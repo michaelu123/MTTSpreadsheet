@@ -80,3 +80,18 @@ Je eher, desto weniger Zeitdruck, desto lieber.
 ### Fake-IBAN
 
 DE91100000000123456789 ist eine syntaktisch gültige IBAN für Testzwecke.
+
+## Setup Visual Studio Code / Typescript
+
+See https://developers.google.com/apps-script/guides/typescript.
+Installieren: node.js, visual studio code.
+Dann:
+
+```
+    npm install -g @google/clasp
+    npm install -S @types/google-apps-script
+    clasp clone <scriptid>  # im Projektverzeichnis, scriptid = id des skripts, daß der SkriptEditor aufmacht.
+```
+
+Danach existiert Datei .clasp.json mit der scriptid.
+In VSCode das Projektverzeichnis öffnen. Terminal öffnen, clasp push -w starten.
