@@ -14,6 +14,7 @@ let reisenSheet: GoogleAppsScript.Spreadsheet.Sheet;
 let buchungenSheet: GoogleAppsScript.Spreadsheet.Sheet;
 
 // Indices are 1-based!!
+// Buchungen
 let mailIndex: number; // E-Mail-Adresse
 let mitgliederNrIndex: number;
 let herrFrauIndex: number; // Anrede
@@ -26,6 +27,26 @@ let verifikationsIndex: number; // Verifikation (der Email-Adresse)
 let anmeldebestIndex: number; // Anmeldebestätigung (gesendet)
 let tourIndexB: number; // Bei welchen Touren möchten Sie mitfahren?
 let einzelnIndex: number; // Reisen Sie alleine oder zu zweit?
+let bezahltIndex: number; // Bezahlt
+
+// Reisen
+let tourIndexR: number; // Reise
+let dzPreisIndex: number; // DZ-Preis
+let ezPreisIndex: number; // EZ-Preis
+let dzAnzahlIndex: number; // DZ-Anzahl
+let ezAnzahlIndex: number; // EZ-Anzahl
+let dzRestIndex: number; // DZ-Rest
+let ezRestIndex: number; // EZ-Rest
+
+// map Buchungen headers to print headers
+let printCols = new Map([
+  ["Vorname", "Vorname"],
+  ["Name", "Nachname"],
+  ["ADFC-Mitgliedsnummer", "Mitglied"],
+  ["Telefonnummer für Rückfragen", "Telefon"],
+  ["Anmeldebestätigung", "Bestätigt"],
+  ["Bezahlt", "Bezahlt"],
+]);
 
 const tourFrage = "Bei welchen Touren möchten Sie mitfahren?";
 const einzelnFrage = "Reisen Sie alleine oder zu zweit?";
@@ -96,8 +117,14 @@ function init() {
 
     if (sheet.getName() == "Reisen") {
       reisenSheet = sheet;
-    }
-    if (sheet.getName() == "Buchungen") {
+      tourIndexR = sheetHeaders["Reise"];
+      dzPreisIndex = sheetHeaders["DZ-Preis"];
+      ezPreisIndex = sheetHeaders["EZ-Preis"];
+      dzAnzahlIndex = sheetHeaders["DZ-Anzahl"];
+      ezAnzahlIndex = sheetHeaders["EZ-Anzahl"];
+      dzRestIndex = sheetHeaders["DZ-Rest"];
+      ezRestIndex = sheetHeaders["EZ-Rest"];
+    } else if (sheet.getName() == "Buchungen") {
       buchungenSheet = sheet;
       mailIndex = sheetHeaders["E-Mail-Adresse"];
       mitgliederNrIndex = sheetHeaders["ADFC-Mitgliedsnummer"];
@@ -115,6 +142,10 @@ function init() {
       anmeldebestIndex = sheetHeaders["Anmeldebestätigung"];
       if (anmeldebestIndex == null) {
         anmeldebestIndex = addColumn(sheet, sheetHeaders, "Anmeldebestätigung");
+      }
+      bezahltIndex = sheetHeaders["Bezahlt"];
+      if (bezahltIndex == null) {
+        bezahltIndex = addColumn(sheet, sheetHeaders, "Bezahlt");
       }
     }
     inited = true;
@@ -181,9 +212,6 @@ function tourPreis(einzeln: boolean, reise: string) {
   let reisenNotes = reisenSheet
     .getRange(2, 1, reisenRows, reisenCols)
     .getNotes();
-  let tourIndexR = headers["Reisen"]["Reise"];
-  let dzPreisIndex = headers["Reisen"]["DZ-Preis"];
-  let ezPreisIndex = headers["Reisen"]["EZ-Preis"];
 
   let betrag = 0;
   for (let i = 0; i < reisenRows; i++) {
@@ -294,9 +322,10 @@ function onOpen() {
   let ui = SpreadsheetApp.getUi();
   // Or DocumentApp or FormApp.
   ui.createMenu("ADFC-MTT")
+    // .addItem("Test", "test")
     .addItem("Anmeldebestätigung senden", "anmeldebestätigung")
     .addItem("Update", "update")
-    // .addItem("Test", "test")
+    .addItem("Reiseteilnehmer drucken", "printTourMembers")
     .addToUi();
 }
 
@@ -361,12 +390,6 @@ function verifyEmail() {
 }
 
 function checkBuchung(e: Event) {
-  let keys = Object.keys(e);
-  Logger.log("checkBuch", keys, typeof e);
-  for (let key of keys) {
-    Logger.log("key %s val %s", key, e[key]);
-  }
-
   let range: GoogleAppsScript.Spreadsheet.Range = e.range;
   let sheet = range.getSheet();
   let row = range.getRow();
@@ -391,9 +414,7 @@ function checkBuchung(e: Event) {
 
   let einzeln = e.namedValues[einzelnFrage][0].startsWith("Alleine");
   let personen = einzeln ? "eine Person" : "zwei Personen";
-  let restCol = einzeln
-    ? headers["Reisen"]["EZ-Rest"]
-    : headers["Reisen"]["DZ-Rest"];
+  let restCol = einzeln ? ezRestIndex : dzRestIndex;
   let touren: Array<string> = [];
   let tourenNV: Array<string> = e.namedValues[tourFrage];
   // actually, tourenNV = e.g. ["tour1, tour2, tour3"], i.e. just one element
@@ -616,11 +637,6 @@ function updateZimmerReste() {
     }
   }
 
-  let tourIndexR = headers["Reisen"]["Reise"];
-  let dzAnzahlIndex = headers["Reisen"]["DZ-Anzahl"];
-  let ezAnzahlIndex = headers["Reisen"]["EZ-Anzahl"];
-  let dzRestIndex = headers["Reisen"]["DZ-Rest"];
-  let ezRestIndex = headers["Reisen"]["EZ-Rest"];
   for (let r = 0; r < reisenRows; r++) {
     if (!isEmpty(reisenNotes[r][0])) continue;
     let tour = reisenVals[r][tourIndexR - 1];
@@ -841,5 +857,196 @@ function isValidIban(iban: string) {
   for (; s; s = s.substr(13)) m = +("" + m + s.substr(0, 13)) % 97;
   return m == 1;
 }
-// test
-// test
+
+// I need any2str because a date copied to temp sheet showed as date.toString().
+// A ' in front of the date came too late.
+function any2Str(val: any): string {
+  if (typeof val == "object" && "getUTCHours" in val) {
+    return Utilities.formatDate(
+      val,
+      SpreadsheetApp.getActive().getSpreadsheetTimeZone(),
+      "dd.MM.YYYY"
+    );
+  }
+  return val.toString();
+}
+
+function printTourMembers() {
+  Logger.log("printTourMembers");
+  if (!inited) init();
+  let sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() != "Reisen") {
+    SpreadsheetApp.getUi().alert(
+      "Bitte eine Zeile im Sheet 'Reisen' selektieren"
+    );
+    return;
+  }
+  let curCell = sheet.getSelection().getCurrentCell();
+  if (!curCell) {
+    SpreadsheetApp.getUi().alert(
+      "Bitte zuerst eine Zeile im Sheet 'Reisen' selektieren"
+    );
+    return;
+  }
+  let row = curCell.getRow();
+  if (row < 2 || row > sheet.getLastRow()) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Zeile ist ungültig, bitte zuerst Reisenzeile selektieren"
+    );
+    return;
+  }
+  let rowValues = sheet
+    .getRange(row, 1, 1, sheet.getLastColumn())
+    .getValues()[0];
+  let rowNote = sheet.getRange(row, 1).getNote();
+  if (!isEmpty(rowNote)) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig"
+    );
+    return;
+  }
+  let reise = rowValues[tourIndexR - 1];
+
+  let buchungenRows = buchungenSheet.getLastRow() - 1; // first row = headers
+  let buchungenCols = buchungenSheet.getLastColumn();
+  let buchungenVals: any[][];
+  let buchungenNotes: string[][];
+  // getRange with 0 rows throws an exception instead of returning an empty array
+  if (buchungenRows < 1) {
+    SpreadsheetApp.getUi().alert("Keine Buchungen gefunden");
+    return;
+  }
+  buchungenVals = buchungenSheet
+    .getRange(2, 1, buchungenRows, buchungenCols)
+    .getValues();
+  buchungenNotes = buchungenSheet.getRange(2, 1, buchungenRows, 1).getNotes();
+
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  sheet = ss.insertSheet(reise);
+
+  let bHdrs = headers["Buchungen"];
+  // first row of temp sheet: the headers
+  {
+    let row: string[] = [];
+    for (let [_, v] of printCols) {
+      row.push(v);
+    }
+    row.push("Zimmer");
+    sheet.appendRow(row);
+    sheet.getRange(1, 1, 1, row.length).setNumberFormat("@");
+  }
+
+  let rows: string[][] = [];
+  for (let b = 0; b < buchungenRows; b++) {
+    if (!isEmpty(buchungenNotes[b][0])) continue;
+    let brow = buchungenVals[b];
+    if (brow[tourIndexB - 1] !== reise) continue;
+    let row: string[] = [];
+    let einzeln = brow[einzelnIndex - 1].startsWith("Alleine");
+    if (einzeln) {
+      for (let [k, _] of printCols) {
+        //for the ' see https://stackoverflow.com/questions/13758913/format-a-google-sheets-cell-in-plaintext-via-apps-script
+        // otherwise, telefon number 089... is printed as 89
+        let val = any2Str(brow[bHdrs[k] - 1]);
+        row.push("'" + val);
+      }
+      row.push("EZ");
+      rows.push(row);
+    } else {
+      for (let [k, _] of printCols) {
+        switch (k) {
+          case "Name":
+            k = "Name 1";
+            break;
+          case "Vorname":
+            k = "Vorname 1";
+            break;
+          case "Telefonnummer für Rückfragen":
+            k = "Telefonnummer für Rückfragen 1";
+        }
+        let val = any2Str(brow[bHdrs[k] - 1]);
+        row.push("'" + val);
+      }
+      row.push("DZ1");
+      rows.push(row);
+      row = [];
+      for (let [k, _] of printCols) {
+        switch (k) {
+          case "Name":
+            k = "Name 2";
+            break;
+          case "Vorname":
+            k = "Vorname 2";
+            break;
+          case "Telefonnummer für Rückfragen":
+            k = "Telefonnummer für Rückfragen 2";
+        }
+        let val = any2Str(brow[bHdrs[k] - 1]);
+        row.push("'" + val);
+      }
+      row.push("DZ2");
+      rows.push(row);
+    }
+  }
+
+  for (let row of rows) sheet.appendRow(row);
+  sheet.autoResizeColumns(1, sheet.getLastColumn());
+  let range = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn());
+  sheet.setActiveSelection(range);
+  printSelectedRange();
+  Utilities.sleep(10000);
+  ss.deleteSheet(sheet);
+}
+
+function objectToQueryString(obj: any) {
+  return Object.keys(obj)
+    .map(function (key) {
+      return Utilities.formatString("&%s=%s", key, obj[key]);
+    })
+    .join("");
+}
+
+// see https://gist.github.com/Spencer-Easton/78f9867a691e549c9c70
+let PRINT_OPTIONS = {
+  size: 7, // paper size. 0=letter, 1=tabloid, 2=Legal, 3=statement, 4=executive, 5=folio, 6=A3, 7=A4, 8=A5, 9=B4, 10=B
+  fzr: false, // repeat row headers
+  portrait: true, // false=landscape
+  fitw: true, // fit window or actual size
+  gridlines: false, // show gridlines
+  printtitle: true,
+  sheetnames: true,
+  pagenum: "UNDEFINED", // CENTER = show page numbers / UNDEFINED = do not show
+  attachment: false,
+};
+
+let PDF_OPTS = objectToQueryString(PRINT_OPTIONS);
+
+function printSelectedRange() {
+  SpreadsheetApp.flush();
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getActiveSheet();
+  let range = sheet.getActiveRange();
+
+  let gid = sheet.getSheetId();
+  let printRange = objectToQueryString({
+    c1: range.getColumn() - 1,
+    r1: range.getRow() - 1,
+    c2: range.getColumn() + range.getWidth() - 1,
+    r2: range.getRow() + range.getHeight() - 1,
+  });
+  let url = ss.getUrl();
+  Logger.log("url1", url);
+  let x = url.indexOf("/edit?");
+  url = url.slice(0, x);
+  url = url + "/export?format=pdf" + PDF_OPTS + printRange + "&gid=" + gid;
+  Logger.log("url2", url);
+  let htmlTemplate = HtmlService.createTemplateFromFile("print.html");
+  htmlTemplate.url = url;
+
+  let ev = htmlTemplate.evaluate();
+
+  SpreadsheetApp.getUi().showModalDialog(
+    ev.setHeight(10).setWidth(100),
+    "Drucke Auswahl"
+  );
+}
