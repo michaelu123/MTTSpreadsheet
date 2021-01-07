@@ -330,18 +330,19 @@ function onOpen() {
 }
 
 function dispatch(e: Event) {
+  let docLock = LockService.getScriptLock();
+  let locked = docLock.tryLock(30000);
+  if (!locked) {
+    Logger.log("Could not obtain document lock");
+  }
   if (!inited) init();
-  // let keys = Object.keys(e);
-  // Logger.log("verif2", keys);
-  // for (let key of keys) {
-  //   Logger.log("key %s val %s keys %s", key, e[key], Object.keys(e[key]));
-  // }
   let range: GoogleAppsScript.Spreadsheet.Range = e.range;
   let sheet = range.getSheet();
   Logger.log("dispatch sheet", sheet.getName(), range.getA1Notation());
   if (sheet.getName() == "Test") checkBuchung(e);
   if (sheet.getName() == "Buchungen") checkBuchung(e);
   if (sheet.getName() == "Email-Verifikation") verifyEmail();
+  if (locked) docLock.releaseLock();
 }
 
 function verifyEmail() {
@@ -589,10 +590,17 @@ function anrede(e: Event) {
 }
 
 function update() {
+  let docLock = LockService.getScriptLock();
+  let locked = docLock.tryLock(30000);
+  if (!locked) {
+    SpreadsheetApp.getUi().alert("Konnte Dokument nicht locken");
+    return;
+  }
   if (!inited) init();
   verifyEmail();
   updateZimmerReste();
   updateForm();
+  docLock.releaseLock();
 }
 
 function updateZimmerReste() {
@@ -752,10 +760,14 @@ function updateForm() {
       reiseObj["EZ-Preis"] +
       "€, " +
       reiseObj["EZ-Rest"] +
+      " von " +
+      reiseObj["EZ-Anzahl"] +
       " frei, DZ " +
       reiseObj["DZ-Preis"] +
       "€, " +
       reiseObj["DZ-Rest"] +
+      " von " +
+      reiseObj["DZ-Anzahl"] +
       " frei";
     Logger.log("mr %s desc %s", mr, desc);
     descs.push(desc);
@@ -933,7 +945,6 @@ function printTourMembers() {
     }
     row.push("Zimmer");
     sheet.appendRow(row);
-    sheet.getRange(1, 1, 1, row.length).setNumberFormat("@");
   }
 
   let rows: string[][] = [];
@@ -994,8 +1005,8 @@ function printTourMembers() {
   let range = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn());
   sheet.setActiveSelection(range);
   printSelectedRange();
-  Utilities.sleep(10000);
-  ss.deleteSheet(sheet);
+  // Utilities.sleep(10000);
+  // ss.deleteSheet(sheet);
 }
 
 function objectToQueryString(obj: any) {
