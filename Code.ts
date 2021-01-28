@@ -58,6 +58,7 @@ interface Event {
 }
 
 function isEmpty(str: string | undefined | null) {
+  if (typeof str == "number") return false;
   return !str || 0 === str.length; // I think !str is sufficient...
 }
 
@@ -722,9 +723,9 @@ function updateForm() {
     for (let hdr in reisenHdrs) {
       if (isEmpty(reisenObj[hdr])) ok = false;
     }
-    if (ok) {
-      ok = +reisenObj["DZ-Rest"] > 0 || +reisenObj["EZ-Rest"] > 0;
-    }
+    // if (ok) {
+    //   ok = +reisenObj["DZ-Rest"] > 0 || +reisenObj["EZ-Rest"] > 0;
+    // }
     if (ok) reisenObjs.push(reisenObj);
   }
   Logger.log("reisenObjs=%s", reisenObjs);
@@ -771,8 +772,11 @@ function updateForm() {
       " frei";
     Logger.log("mr %s desc %s", mr, desc);
     descs.push(desc);
-    let choice = reisenItem.createChoice(mr);
-    choices.push(choice);
+    let ok = +reiseObj["DZ-Rest"] > 0 || +reiseObj["EZ-Rest"] > 0;
+    if (ok) {
+      let choice = reisenItem.createChoice(mr);
+      choices.push(choice);
+    }
   }
   let beschreibung =
     "Sie können eine oder mehrere Touren ankreuzen.\nBitte beachten Sie die Anzahl noch freier Zimmer!\n" +
