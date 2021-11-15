@@ -31,6 +31,8 @@ let bezahltIndex: number; // Bezahlt
 
 // Reisen
 let tourIndexR: number; // Reise
+let beginnIndex: number; // Beginn
+let endeIndex: number; // Ende
 let dzPreisIndex: number; // DZ-Preis
 let ezPreisIndex: number; // EZ-Preis
 let dzAnzahlIndex: number; // DZ-Anzahl
@@ -119,6 +121,8 @@ function init() {
     if (sheet.getName() == "Reisen") {
       reisenSheet = sheet;
       tourIndexR = sheetHeaders["Reise"];
+      beginnIndex = sheetHeaders["Beginn"];
+      endeIndex = sheetHeaders["Ende"];
       dzPreisIndex = sheetHeaders["DZ-Preis"];
       ezPreisIndex = sheetHeaders["EZ-Preis"];
       dzAnzahlIndex = sheetHeaders["DZ-Anzahl"];
@@ -204,6 +208,13 @@ function attachmentFiles() {
   return files; // why not use PDFs directly??
 }
 
+function reisenName(reisenVal: any[]) {
+  let name = reisenVal[tourIndexR - 1];
+  let beginn = reisenVal[beginnIndex - 1];
+  let ende = reisenVal[endeIndex - 1];
+  return name.trim() + " " + any2StrDDMM(beginn) + " - " + any2StrDDMM(ende);
+}
+
 function tourPreis(einzeln: boolean, reise: string) {
   let reisenRows = reisenSheet.getLastRow() - 1; // first row = headers
   let reisenCols = reisenSheet.getLastColumn();
@@ -217,7 +228,7 @@ function tourPreis(einzeln: boolean, reise: string) {
   let betrag = 0;
   for (let i = 0; i < reisenRows; i++) {
     if (!isEmpty(reisenNotes[i][0])) continue;
-    if (reisenVals[i][tourIndexR - 1] === reise) {
+    if (reisenName(reisenVals[i]) === reise) {
       betrag = einzeln
         ? reisenVals[i][ezPreisIndex - 1]
         : 2 * reisenVals[i][dzPreisIndex - 1];
@@ -312,7 +323,7 @@ function anmeldebestätigung() {
   let options = {
     htmlBody: htmlText,
     name: "Mehrtagestouren ADFC München e.V.",
-    replyTo: "michael.uhlenberg@adfc-muenchen.de",
+    replyTo: "mehrtagestouren@adfc-muenchen.de",
   };
   GmailApp.sendEmail(emailTo, subject, textbody, options);
   // update sheet
@@ -556,7 +567,7 @@ function sendeAntwort(
   let options = {
     htmlBody: htmlText,
     name: "Mehrtagestouren ADFC München e.V.",
-    replyTo: "michael.uhlenberg@adfc-muenchen.de",
+    replyTo: "mehrtagestouren@adfc-muenchen.de",
   };
   GmailApp.sendEmail(emailTo, subject, textbody, options);
 }
@@ -648,7 +659,7 @@ function updateZimmerReste() {
 
   for (let r = 0; r < reisenRows; r++) {
     if (!isEmpty(reisenNotes[r][0])) continue;
-    let tour = reisenVals[r][tourIndexR - 1];
+    let tour = reisenName(reisenVals[r]);
     let dzAnzahl: number = reisenVals[r][dzAnzahlIndex - 1];
     let ezAnzahl: number = reisenVals[r][ezAnzahlIndex - 1];
     let dzGebucht: number = dzimmer[tour];
@@ -716,7 +727,11 @@ function updateForm() {
     for (let hdr in reisenHdrs) {
       let idx = reisenHdrs[hdr];
       // Logger.log("hdr %s %s", hdr, idx);
-      reisenObj[hdr] = reisenVals[i][idx - 1];
+      if (hdr == "Reise") {
+      reisenObj[hdr] = reisenName(reisenVals[i]);
+      } else {
+        reisenObj[hdr] = reisenVals[i][idx - 1];
+      }
     }
     let ok = true;
     // check if all cells of Reise row are nonempty
@@ -887,6 +902,17 @@ function any2Str(val: any): string {
   return val.toString();
 }
 
+function any2StrDDMM(val: any): string {
+  if (typeof val == "object" && "getUTCHours" in val) {
+    return Utilities.formatDate(
+      val,
+      SpreadsheetApp.getActive().getSpreadsheetTimeZone(),
+      "dd.MM"
+    );
+  }
+  return val.toString();
+}
+
 function printTourMembers() {
   Logger.log("printTourMembers");
   if (!inited) init();
@@ -921,7 +947,7 @@ function printTourMembers() {
     );
     return;
   }
-  let reise = rowValues[tourIndexR - 1];
+  let reise = reisenName(rowValues);
 
   let buchungenRows = buchungenSheet.getLastRow() - 1; // first row = headers
   let buchungenCols = buchungenSheet.getLastColumn();
