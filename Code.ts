@@ -46,6 +46,9 @@ let printCols = new Map([
   ["Name", "Nachname"],
   ["ADFC-Mitgliedsnummer", "Mitglied"],
   ["Telefonnummer für Rückfragen", "Telefon"],
+  ["Vegetarier", "Vegetarier"],
+  ["Corona Impfstatus", "Impfstatus"],
+  ["Mein Fahrrad", "Fahrrad"],
   ["Anmeldebestätigung", "Bestätigt"],
   ["Bezahlt", "Bezahlt"],
 ]);
@@ -323,7 +326,7 @@ function anmeldebestätigung() {
   let options = {
     htmlBody: htmlText,
     name: "Mehrtagestouren ADFC München e.V.",
-    replyTo: "mehrtagestouren@adfc-muenchen.de",
+    replyTo: "reisen@adfc-muenchen.de",
   };
   GmailApp.sendEmail(emailTo, subject, textbody, options);
   // update sheet
@@ -396,10 +399,33 @@ function verifyEmail() {
         // Buchungen[Verifiziert] = Email-Verif[Zeitstempel]
         buchungenSheet.getRange(bxi + 2, verifikationsIndex).setValue(erow[0]);
         brow[verifikationsIndex - 1] = erow[0];
+        sendVerifEmail(brow);
         break;
       }
     }
   }
+}
+
+function sendVerifEmail(rowValues: any[]) {
+  let herrFrau = rowValues[herrFrauIndex - 1];
+  let name = rowValues[nameIndex - 1];
+  let empfaenger = rowValues[mailIndex - 1];
+  // Anrede
+  let anrede: string = anredeText(herrFrau, name);
+  var subject = "Emailadresse bestätigt";
+  var body =
+    anrede +
+    ",\nvielen Dank, dass Sie Ihre E-Mail Adresse verifiziert haben.\n" +
+    "Sie sind hiermit vorgebucht, und bekommen einige Wochen vor Reisebeginn die endgültige Bestätigung,\n" +
+    "dass Sie für die Reise " + rowValues[tourIndexB - 1] + " angemeldet sind.\n" +
+    "Mit freundlichen Grüßen,\n\n" +
+    "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
+    "Platenstraße 4\n" +
+    "80336 München\n" +
+    "Tel. 089 | 773429 Fax 089 | 778537\n" +
+    "reisen@adfc-muenchen.de\n" +
+    "www.adfc-muenchen.de\n";
+  GmailApp.sendEmail(empfaenger, subject, body);
 }
 
 function checkBuchung(e: Event) {
@@ -476,7 +502,7 @@ function checkBuchung(e: Event) {
   for (let i = 0; i < touren.length; i++) {
     let tourFound = false;
     for (let j = 0; j < reisen.length; j++) {
-      if (reisen[j][0] == touren[i]) {
+      if (reisenName(reisen[j]) == touren[i]) { 
         tourFound = true;
         let rest = reisenSheet.getRange(2 + j, restCol).getValue();
         if (rest <= 0) {
@@ -511,7 +537,7 @@ function checkBuchung(e: Event) {
     return;
   }
   if (restChanged) {
-    updateForm();
+    // updateForm(); // Im Formular stehen keine Zimmerreste mehr! 
   }
   Logger.log("msgs: ", msgs, msgs.length);
   sendeAntwort(e, msgs, sheet, buchungsRowNumbers);
@@ -555,7 +581,7 @@ function sendeAntwort(
   template.anrede = anrede(e);
   template.msgs = msgs;
   template.verifLink =
-    "https://docs.google.com/forms/d/e/1FAIpQLScLF2jogdsQGOI_A4gvGVvmrasN6pS5MZgY7xvqSjMB87F6uw/viewform?usp=pp_url&entry.1398709542=Ja&entry.576071197=" +
+    "https://docs.google.com/forms/d/e/1FAIpQLSd_WL7QFvcvqv42GFewY42PLYFiw4qSweaP7RCUX7TfzS-MBA/viewform?usp=pp_url&entry.1398709542=Ja&entry.576071197=" +
     encodeURIComponent(emailTo);
 
   let htmlText: string = template.evaluate().getContent();
@@ -567,7 +593,7 @@ function sendeAntwort(
   let options = {
     htmlBody: htmlText,
     name: "Mehrtagestouren ADFC München e.V.",
-    replyTo: "mehrtagestouren@adfc-muenchen.de",
+    replyTo: "reisen@adfc-muenchen.de",
   };
   GmailApp.sendEmail(emailTo, subject, textbody, options);
 }
@@ -736,7 +762,10 @@ function updateForm() {
     let ok = true;
     // check if all cells of Reise row are nonempty
     for (let hdr in reisenHdrs) {
-      if (isEmpty(reisenObj[hdr])) ok = false;
+      if (isEmpty(reisenObj[hdr])) { 
+        SpreadsheetApp.getUi().alert('Die Spalte ' + hdr + ' vom Tabellenblatt Reisen ist leer');
+        ok = false;
+      }
     }
     // if (ok) {
     //   ok = +reisenObj["DZ-Rest"] > 0 || +reisenObj["EZ-Rest"] > 0;
@@ -744,6 +773,10 @@ function updateForm() {
     if (ok) reisenObjs.push(reisenObj);
   }
   Logger.log("reisenObjs=%s", reisenObjs);
+  if (reisenObjs.length == 0) {
+        SpreadsheetApp.getUi().alert('Keine Reisen im Tabellenblatt Reisen');
+        return;
+  }
 
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   let formUrl = ss.getFormUrl();
@@ -773,18 +806,18 @@ function updateForm() {
     let desc =
       mr +
       ", EZ " +
-      reiseObj["EZ-Preis"] +
-      "€, " +
-      reiseObj["EZ-Rest"] +
-      " von " +
-      reiseObj["EZ-Anzahl"] +
-      " frei, DZ " +
-      reiseObj["DZ-Preis"] +
-      "€, " +
-      reiseObj["DZ-Rest"] +
-      " von " +
-      reiseObj["DZ-Anzahl"] +
-      " frei";
+      reiseObj["EZ-Preis"] + "€";
+      // "€, " +
+      // reiseObj["EZ-Rest"] +
+      // " von " +
+      // reiseObj["EZ-Anzahl"] +
+      // " frei, DZ " +
+      // reiseObj["DZ-Preis"] +
+      // "€, " +
+      // reiseObj["DZ-Rest"] +
+      // " von " +
+      // reiseObj["DZ-Anzahl"] +
+      // " frei";
     Logger.log("mr %s desc %s", mr, desc);
     descs.push(desc);
     let ok = +reiseObj["DZ-Rest"] > 0 || +reiseObj["EZ-Rest"] > 0;
@@ -794,7 +827,8 @@ function updateForm() {
     }
   }
   let beschreibung =
-    "Sie können eine oder mehrere Touren ankreuzen.\nBitte beachten Sie die Anzahl noch freier Zimmer!\n" +
+    // "Sie können eine oder mehrere Touren ankreuzen.\nBitte beachten Sie die Anzahl noch freier Zimmer!\n" +
+    "Sie können eine oder mehrere Touren ankreuzen.\n" +
     descs.join("\n");
   reisenItem.setHelpText(beschreibung);
   reisenItem.setChoices(choices);
@@ -978,6 +1012,8 @@ function printTourMembers() {
   }
 
   let rows: string[][] = [];
+  let eznr = 1;
+  let dznr = 1;
   for (let b = 0; b < buchungenRows; b++) {
     if (!isEmpty(buchungenNotes[b][0])) continue;
     let brow = buchungenVals[b];
@@ -991,41 +1027,25 @@ function printTourMembers() {
         let val = any2Str(brow[bHdrs[k] - 1]);
         row.push("'" + val);
       }
-      row.push("EZ");
+      row.push("EZ" + eznr++);
       rows.push(row);
     } else {
       for (let [k, _] of printCols) {
-        switch (k) {
-          case "Name":
-            k = "Name 1";
-            break;
-          case "Vorname":
-            k = "Vorname 1";
-            break;
-          case "Telefonnummer für Rückfragen":
-            k = "Telefonnummer für Rückfragen 1";
-        }
-        let val = any2Str(brow[bHdrs[k] - 1]);
+        let rval = brow[bHdrs[k + " 1"] - 1];
+        if (rval == null) rval = brow[bHdrs[k] - 1];
+        let val = any2Str(rval);
         row.push("'" + val);
       }
-      row.push("DZ1");
+      row.push("DZ" + dznr) ;
       rows.push(row);
       row = [];
       for (let [k, _] of printCols) {
-        switch (k) {
-          case "Name":
-            k = "Name 2";
-            break;
-          case "Vorname":
-            k = "Vorname 2";
-            break;
-          case "Telefonnummer für Rückfragen":
-            k = "Telefonnummer für Rückfragen 2";
-        }
-        let val = any2Str(brow[bHdrs[k] - 1]);
+        let rval = brow[bHdrs[k + " 2"] - 1];
+        if (rval == null) rval = brow[bHdrs[k] - 1];
+        let val = any2Str(rval);
         row.push("'" + val);
       }
-      row.push("DZ2");
+      row.push("DZ" + dznr++);
       rows.push(row);
     }
   }
